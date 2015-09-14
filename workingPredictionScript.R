@@ -25,7 +25,7 @@ system.time(
   c <- calcSimilarity(u1, u2)
 )
 
-calcSimilarUsers <- function(userID, ratingsDF, NcommonRatings, NtopUsers) {
+calcSimilarUsers <- function(userID, ratingsDF, NcommonRatings, nPercent) {
   #Create user dataframe for given userID
   userDF <- subset(ratingsDF, UserID == userID)
   #Find the number of common ratings between given userID and all other users
@@ -45,7 +45,8 @@ calcSimilarUsers <- function(userID, ratingsDF, NcommonRatings, NtopUsers) {
   #Sort similarities
   sortedSimilarities <- sort(userSimilarities, decreasing = T)
   #Get top N users - input provided
-  topN <- sortedSimilarities[1:NtopUsers]
+  NpercentUsers <- length(sortedSimilarities)*nPercent 
+  topN <- sortedSimilarities[1:NpercentUsers]
   #Subset ratings further for only the truly relevent ratings
   similarUsersRatings <- subset(ratingsDF, UserID %in% names(topN))
   return(similarUsersRatings)
@@ -80,7 +81,15 @@ system.time(
 
 predictRatingStandardized <- function(userID, similarRatingDF, predDF) {
   userDF <- subset(ratingsStandardizedDF, UserID == userID)
-  predID = predDF$ProfileID[1]
+  if (is.numeric(predDF)) {
+    predID = predDF
+  }
+  else {
+    predID = predDF$ProfileID[1] 
+  }
+  if (!(predID %in% similarRatingDF$ProfileID)) {
+    return(userDF$meanRating[1])
+  }
   predVal <- userDF$meanRating[1] + userDF$sdRating[1]*mean(similarRatingDF$Rating[similarRatingDF$ProfileID == predID], na.rm = T)
   return(predVal)
 }
@@ -123,16 +132,33 @@ predictRatingCentered <- function(userDF, similarRatingDF, predDF) {
 #######
 
 calcTrainingRMSEforUser <- function(userID, ratingsDF, NcommonUsers, NtopUsers, predFunc, predDF) {
+  if (is.numeric(predDF)) {
+    predictDF = subset(ratings, UserID == predDF)
+  }
+  else {
+    predictDF = predDF
+  }
   simUsers <- calcSimilarUsers(userID, ratingsDF, NcommonUsers, NtopUsers)
-  RMSE <- calcRMSEforTrainingData(userID, predFunc, simUsers, predDF)
+  RMSE <- calcRMSEforTrainingData(userID, predFunc, simUsers, predictDF)
   return(RMSE)
 }
 
 system.time(
-  simUsers <- calcSimilarUsers(1, ratings, 10, 100)
+  simUsers <- calcSimilarUsers(5, ratingsStandardizedDF, 10, 100)
 )
 
 system.time(
-  u1RMSE <- calcTrainingRMSEforUser(1, ratingsStandardizedDF, 10, 100, predictRatingStandardized, u1)
+  u2RMSE2 <- calcTrainingRMSEforUser(1, ratingsStandardizedDF, 10, .2, predictRatingStandardized, 1)
 )
+
+RMSEs <- c()
+for (i in 1:700) {
+  RMSEs[length(RMSEs) + 1] <- calcTrainingRMSEforUser(i, ratingsStandardizedDF, 10, 100, predictRatingStandardized, i)
+}
+
+b$meanRating[1] + b$sdRating[1]*mean(simUsers$Rating)
+preds <- c()
+for (i in a$ProfileID) {
+  preds[length(preds) + 1] <- predictRatingStandardized(5, simUsers, i)
+}
 
