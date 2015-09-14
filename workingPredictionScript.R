@@ -1,5 +1,6 @@
 ratings <- read.csv("/Users/Andrew/Desktop/Classes/Fall_2015/Stat444/Competition/ratings.csv")
 idmap <- read.csv("/Users/Andrew/Desktop/Classes/Fall_2015/Stat444/Competition/idmap.csv")
+library(data.table)
 
 findNumSimilar <- function(userDF, user2DF) {
   if (user2DF$UserID[1] == userDF$UserID[1]) {
@@ -143,22 +144,6 @@ calcTrainingRMSEforUser <- function(userID, ratingsDF, NcommonUsers, NtopUsers, 
   return(RMSE)
 }
 
-system.time(
-  simUsers <- calcSimilarUsers(5, ratingsStandardizedDF, 10, 100)
-)
-
-system.time(
-  u2RMSE2 <- calcTrainingRMSEforUser(1, ratingsStandardizedDF, 10, .2, predictRatingStandardized, 1)
-)
-
-RMSEs <- c()
-for (i in 1:700) {
-  RMSEs[length(RMSEs) + 1] <- calcTrainingRMSEforUser(i, ratingsStandardizedDF, 10, 100, predictRatingStandardized, i)
-}
-
-b$meanRating[1] + b$sdRating[1]*mean(simUsers$Rating)
-preds <- c()
-for (i in a$ProfileID) {
-  preds[length(preds) + 1] <- predictRatingStandardized(5, simUsers, i)
-}
-
+#######
+#Parallel section
+#######
