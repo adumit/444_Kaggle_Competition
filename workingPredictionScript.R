@@ -26,7 +26,7 @@ system.time(
   c <- calcSimilarity(u1, u2)
 )
 
-calcSimilarUsers <- function(userID, ratingsDF, NcommonRatings, nPercent) {
+calcSimilarUsers <- function(userID, ratingsDF, NcommonRatings) {
   #Create user dataframe for given userID
   userDF <- subset(ratingsDF, UserID == userID)
   #Find the number of common ratings between given userID and all other users
@@ -43,13 +43,20 @@ calcSimilarUsers <- function(userID, ratingsDF, NcommonRatings, nPercent) {
   ratingsSub <- subset(ratingsDF, UserID %in% similarDF$userIDs)
   #Get similarities between all users and provided user
   userSimilarities <- by(ratingsSub, ratingsSub$UserID, function(x) calcSimilarity(userDF, x))
-  #Sort similarities
-  sortedSimilarities <- sort(userSimilarities, decreasing = T)
-  #Get top N users - input provided
-  NpercentUsers <- length(sortedSimilarities)*nPercent 
-  topN <- sortedSimilarities[1:NpercentUsers]
+  userSimilaritiesMat <- matrix(unlist(userSimilarities), ncol = 1, byrow = T)
+  userSimilaritiesID <- names(userSimilarities)
+  userSimilaritiesDF <- data.frame(userSimilaritiesID, userSimilaritiesMat)
+  names(userSimilaritiesDF)[1] <- "UserID"
+  userSimilaritiesDF$UserID <- as.numeric(as.character(userSimilaritiesDF$UserID))
+  #Took out top N similarities
+#   #Sort similarities
+#   sortedSimilarities <- sort(userSimilarities, decreasing = T)
+#   #Get top N users - input provided
+#   NpercentUsers <- length(sortedSimilarities)*nPercent 
+#   topN <- sortedSimilarities[1:NpercentUsers]
   #Subset ratings further for only the truly relevent ratings
-  similarUsersRatings <- subset(ratingsDF, UserID %in% names(topN))
+#  similarUsersRatings <- subset(ratingsDF, UserID %in% names(topN))
+  similarUsersRatings <- join(ratingsSub, userSimilaritiesDF, by = "UserID")
   return(similarUsersRatings)
 }
 #Took 90 seconds for user 1
@@ -144,6 +151,26 @@ calcTrainingRMSEforUser <- function(userID, ratingsDF, NcommonUsers, NtopUsers, 
   return(RMSE)
 }
 
+calcSimUsersAndSave <- function(userID, ratingsDF, NcommonUsers, NtopPerc) {
+  simUsers <- calcSimilarUsers(userID, ratingsDF, NcommonUsers, NtopPerc)
+  save(simUsers, file = paste0("/Users/Andrew/Desktop/Classes/Fall_2015/Stat444/Competition/similarityMatriciesStandardized/simUsers", userID, ".rda"))
+  return(simUsers)
+}
+
+#######
+#Make predictions over a dataframe
+#######
+calcStandardizedPredictionsOverDF <- function(predDF, ratingsDF) {
+  
+}
+
+
 #######
 #Parallel section
 #######
+c1 <- c(10:20)
+system.time(
+  c1result <- lapply(c1, function(x) calcSimUsersAndSave(x, ratingsStandardizedDF, 10, 1))
+)
+
+
