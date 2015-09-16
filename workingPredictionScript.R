@@ -3,7 +3,7 @@ idmap <- read.csv("/Users/Andrew/Desktop/Classes/Fall_2015/Stat444/Competition/i
 library(data.table)
 
 findNumSimilar <- function(userDF, user2DF) {
-  if (user2DF$UserID[1] == userDF$UserID[1]) {
+  if (userDF$UserID[1] == user2DF$UserID[1]) {
     return(0)
   }
   else {
@@ -22,16 +22,12 @@ calcSimilarity <- function(userDF, similarUserDF) {
   return(dist(rbind(userRatings$Rating, similarUserRatings$Rating), method = "euclidean"))
 }
 
-system.time(
-  c <- calcSimilarity(u1, u2)
-)
-
 calcSimilarUsers <- function(userID, ratingsDF, NcommonRatings, Npercentile) {
   #Create user dataframe for given userID
-  userDF <- subset(ratingsDF, UserID == userID)
+  userDF <- subset(ratingsDF, UserID == userID) #Slower command
   #Find the number of common ratings between given userID and all other users
   #Returns 0 for given userID so as to not include in final output
-  ratingsSub <- subset(ratingsDF, ProfileID %in% userDF$ProfileID)
+  ratingsSub <- subset(ratingsDF, ProfileID %in% userDF$ProfileID) #Slower command
   commonRatingUsers <- getNumCommonRatings(ratingsSub, userDF)
   #Create dataframe with userID and numSimilar as columns
   numSimilar <- matrix(unlist(commonRatingUsers), ncol = 1, byrow = T)
@@ -40,9 +36,9 @@ calcSimilarUsers <- function(userID, ratingsDF, NcommonRatings, Npercentile) {
   similarDF$numSimilar <- as.numeric(as.character(similarDF$numSimilar))
   similarDF$userIDs <- as.numeric(as.character(similarDF$userIDs))
   #Get all users with equal to or more similar ratings than provided input
-  similarDF <- subset(similarDF, numSimilar >= NcommonRatings)
+  similarDF <- subset(similarDF, numSimilar >= NcommonRatings) #Slower command
   #Subset entire ratings dataframe to only get relevent ratings for next action - makes the next action faster
-  ratingsSub <- subset(ratingsDF, UserID %in% similarDF$userIDs)
+  ratingsSub <- subset(ratingsDF, UserID %in% similarDF$userIDs) #Slower command than above
   #Get similarities between all users and provided user
   userSimilarities <- by(ratingsSub, ratingsSub$UserID, function(x) calcSimilarity(userDF, x))
   userSimilaritiesMat <- matrix(unlist(userSimilarities), ncol = 1, byrow = T)
@@ -74,8 +70,10 @@ standardizeRatings <- function(singleUserDF) {
   singleUserDF$Rating <- (singleUserDF$Rating - mean(singleUserDF$Rating))/sd(singleUserDF$Rating)
   return(singleUserDF)
 }
-ratingsStandardizedList <- by(ratings, ratings$UserID, function(x) standardizeRatings(x))
-library(data.table)
+# ~41 seconds
+system.time(
+  ratingsStandardizedList <- by(ratings, ratings$UserID, function(x) standardizeRatings(x))
+)
 # <1.0 seconds
 system.time(
   ratingsStandardizedDF <- as.data.frame(rbindlist(ratingsStandardizedList))
@@ -86,8 +84,9 @@ system.time(
 
 #Took ~6.5 seconds for user 1 w/ 10 common users and .9 percentile
 #Takes ~6.5 seconds with 0 percentile users as well
+library(plyr)
 system.time(
-  a <- calcSimilarUsers(1, ratingsStandardizedDF, 5, 0.9)
+  a <- calcSimilarUsers(1, ratingsStandardizedDF, 10, 0.9)
 )
 
 #######
@@ -108,6 +107,57 @@ predictRatingWithWeights <- function(userDF, simRatingsDF, predID) {
   return(prediction)
 }
 
+predictDFby <- function(userDF, ratingsDF, NcommonRatings, Npercentile, predDF) {
+  simUsers <- calcSimilarUsers(userDF$UserID[1], ratingsDF, NcommonRatings, Npercentile)
+  preds <- by(predDF, predDF$ProfileID, function(x) predictRatingWithWeights(userDF, simUsers, x))
+  return(preds)
+}
+
+predictDFlapply <- function(userDF, ratingsDF, NcommonRatings, Npercentile, predDF) {
+  simUsers <- calcSimilarUsers(userDF$UserID[1], ratingsDF, NcommonRatings, Npercentile)
+  preds <- lapply(predDF$ProfileID, function(x) predictRatingWithWeights(userDF, simUsers, x))
+  return(preds)
+}
+####
+#Speed testing
+####
+system.time(
+  u1 <- subset(idmap, UserID == 1)
+)
+system.time(
+  user1 <- subset(ratingsStandardizedDF, UserID == 1)
+)
+system.time(
+  a <- predictDFby(user1, ratingsStandardizedDF, 10, .8, u1)
+)
+system.time(
+  b <- predictDFlapply(user1, ratingsStandardizedDF, 10, .8, u1)
+)
+#Conclusion: lapply seems to be faster
+#####
+# By function for many users in one call
+#####
+runPredsForUser <- function(predID, ratingsDF, NcommonRatings, Npercentile) {
+  prevRatings <- subset(ratingsDF, UserID == predID)
+  predDF <- subset(idmap, UserID == predID)
+  return(predictDFby(prevRatings, ratingsDF, NcommonRatings, Npercentile, predDF))
+}
+
+system.time(
+  results <- lapply(1501:2800, function(x) runPredsForUser(x, ratingsStandardizedDF, 10, .8))
+)
+save(results, file = "results1501_2800")
+
+
+
+
+calculateTrainingRMSE.weights <- function(userDF, simRatingsDF, predDF) {
+  preds <- by(predDF, predDF$ProfileID, function(x) predictRatingWithWeights(userDF, simRatingsDF, x))
+  errors <- predDF$Rating - preds
+  RMSE <- mean(abs(errors))
+  return(RMSE)
+}
+
 # predictRatingWithWeightsBase <- function(userDF, simRatingsDF, predID) {
 #   if (!is.numeric(predID)) {
 #     predID = predID$ProfileID[1]
@@ -120,13 +170,6 @@ predictRatingWithWeights <- function(userDF, simRatingsDF, predID) {
 #   prediction <- mean(ratingsOfInterest$Rating*ratingsOfInterest$UserSimilarity, na.rm = T)
 #   return(prediction)
 # }
-
-calculateTrainingRMSE.weights <- function(userDF, simRatingsDF, predDF) {
-  preds <- by(predDF, predDF$ProfileID, function(x) predictRatingWithWeights(userDF, simRatingsDF, x))
-  errors <- predDF$Rating - preds
-  RMSE <- mean(abs(errors))
-  return(RMSE)
-}
 
 # calculateTrainingRMSE.weights.base <- function(userDF, simRatingsDF, predDF) {
 #   preds <- by(predDF, predDF$ProfileID, function(x) predictRatingWithWeightsBase(userDF, simRatingsDF, x))
@@ -143,14 +186,18 @@ u1s <- subset(ratingsStandardizedDF, UserID == 1)
 u2actual <- subset(ratings, UserID == 2)
 u2s <- subset(ratingsStandardizedDF, UserID == 2)
 
-t1 <- calcSimilarUsers(1, ratingsStandardizedDF, 10, 0.8)
+t1 <- calcSimilarUsers(1, ratingsStandardizedDF, 10, 0)
 
 t.2 <- calcSimilarUsers(2, ratingsStandardizedDF, 10, .8)
 
 calculateTrainingRMSE.weights(u1s, t1, u1actual)
 calculateTrainingRMSE.weights(u2s, t2, u2actual)
 
-RMSETraingCalc <- function(userID, ratingsDF, NcommonRatings, Npercentile) {
+#######
+# More extensive testing
+#######
+
+RMSETrainingCalc <- function(userID, ratingsDF, NcommonRatings, Npercentile) {
   uActual <- subset(ratings, UserID == userID)
   uStandardized <- subset(ratingsDF, UserID == userID)
   simUsers <- calcSimilarUsers(userID, ratingsDF, NcommonRatings, Npercentile)
@@ -158,8 +205,34 @@ RMSETraingCalc <- function(userID, ratingsDF, NcommonRatings, Npercentile) {
   return(RMSE)
 }
 
-RMSETraingCalc(5, ratingsStandardizedDF, 10, .8)
+system.time(
+  test1 <- RMSETraingCalc(1, ratingsStandardizedDF, 10, 0)
+)
 
+system.time(
+  test1 <- sapply(sample(1:10000, 100), function(x) RMSETrainingCalc(x, ratingsStandardizedDF, 10, 0))
+)
+
+
+#### PARALLEL DOESN'T CURRENTLY WORK
+# #######
+# # Parallel testing
+# #######
+# library(parallel)
+# sampleRMSEParallel <- function(nUsersPerCore, ratingsDF, NcommonRatings, Npercentile) {
+#   c1 <- c(sample(1:10000, nUsersPerCore))
+#   c2 <- c(sample(1:10000, nUsersPerCore))
+#   c3 <- c(sample(1:10000, nUsersPerCore))
+#   c4 <- c(sample(1:10000, nUsersPerCore))
+#   cores <- list(c1, c2, c3, c4)
+#   cl = makeCluster(4, "FORK")
+#   return(clusterApplyLB(cl, cores, function(c) by(c, c, function(x) RMSETraingCalc(x, ratingsDF, NcommonRatings, Npercentile))))
+# }
+# 
+# system.time(
+#   test <- sampleRMSEParallel(2, ratingsStandardizedDF, 10, 0)
+# )
+# test1 <- mean(unlist(test))
 
 
 # predictRatingAbsolute <- function(similarRatingDF, predDF) {
