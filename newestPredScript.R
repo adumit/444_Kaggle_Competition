@@ -10,3 +10,7 @@ takeSubsetRatings <- function(df, userDF) {
 
 ratingsSub <- subset(ratings, UserID <= 100)
 tempList <- by(ratingsSub, ratingsSub$UserID, function(x) takeSubsetRatings(ratings, x))
+
+a <- c(1,2,3,4,5)
+b <- c(1,2,3,4,5,6)
+dist(a,b)

@@ -86,7 +86,7 @@ system.time(
 #Takes ~6.5 seconds with 0 percentile users as well
 library(plyr)
 system.time(
-  a <- calcSimilarUsers(1, ratingsStandardizedDF, 10, 0.9)
+  a <- calcSimilarUsers(1, ratingsStandardizedDF, 10, 0)
 )
 
 #######
@@ -121,6 +121,7 @@ predictDFlapply <- function(userDF, ratingsDF, NcommonRatings, Npercentile, pred
 ####
 #Speed testing
 ####
+library(plyr)
 system.time(
   u1 <- subset(idmap, UserID == 1)
 )
@@ -144,10 +145,49 @@ runPredsForUser <- function(predID, ratingsDF, NcommonRatings, Npercentile) {
 }
 
 system.time(
-  results <- lapply(1501:2800, function(x) runPredsForUser(x, ratingsStandardizedDF, 10, .8))
+  results <- lapply(1501:2800, function(x) runPredsForUser(x, ratingsStandardizedDF, 10, .95))
 )
 save(results, file = "results1501_2800")
 
+
+library(parallel)
+c1 <- 1:1420
+c2 <- 1421:2840
+c3 <- 2841:4260
+c4 <- 4261:5680
+c5 <- 5681:7100
+c6 <- 7101:8550
+c7 <- 8551:10000
+cores <- list(c1, c2, c3, c4, c5, c6, c7)
+cl = makeCluster(7, "FORK")
+system.time(
+  results <- clusterApplyLB(cl, cores, function(c) lapply(c, function(x) runPredsForUser(x, ratingsStandardizedDF, 10, .7)))
+)
+save(results, file = "results1_10000_.7nh.rda")
+temp <- unlist(results)
+nums <- idmap$KaggleID
+temp[temp > 10] <- 10
+temp[temp < 1] <- 1
+final_resultsDF <- data.frame("ID" = nums, temp)
+write.csv(final_resultsDF, file = "submission4.csv")
+#first 40 users w/ 10 users per core took 140sec
+#first 60 users w/15 users per core took 215 sec
+#first 200 users w/100 users per core took 588 sec
+
+r1 <- load("results1_1500.rda")
+r1 <- unlist(results)
+r2 <- load("results1501_2800.rda")
+r2 <- unlist(results)
+r3 <- load("results2800_4000.rda")
+r3 <- unlist(results)
+r4 <- load("results4001_7000.rda")
+r4 <- unlist(results)
+r5 <- load("results7001_10000.rda")
+r5 <- unlist(results)
+
+final_results <- c(r1, r2, r3, r4, r5)
+final_results[final_results < 1] = 1
+final_results[final_results > 10] = 10
 
 
 
@@ -186,7 +226,7 @@ u1s <- subset(ratingsStandardizedDF, UserID == 1)
 u2actual <- subset(ratings, UserID == 2)
 u2s <- subset(ratingsStandardizedDF, UserID == 2)
 
-t1 <- calcSimilarUsers(1, ratingsStandardizedDF, 10, 0)
+t1 <- calcSimilarUsers(1, ratingsStandardizedDF, 10, .80)
 
 t.2 <- calcSimilarUsers(2, ratingsStandardizedDF, 10, .8)
 
