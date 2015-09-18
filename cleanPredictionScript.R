@@ -55,7 +55,8 @@ system.time(
   a <- calcSimilarUsers(1, ratings, 10, 100)
 )
 
-predictRatingAbsolute <- function(similarRatingDF, predID) {
+predictRatingAbsolute <- function(similarRatingDF, predDF) {
+  predID = predDF$ProfileID[1]
   return(mean(similarRatingDF$Rating[similarRatingDF$Profile == predID]))
 }
 
@@ -77,8 +78,9 @@ system.time(
   standardizedSimilar1 <- calcSimilarUsers(1, ratingsStandardizedDF, 10, 100)
 )
 
-predictRatingStandardized <- function(userID, similarRatingDF, predID) {
+predictRatingStandardized <- function(userID, similarRatingDF, predDF) {
   userDF <- subset(ratingsStandardizedDF, UserID == userID)
+  predID = predDF$ProfileID[1]
   predVal <- userDF$meanRating[1] + userDF$sdRating[1]*mean(similarRatingDF$Rating[similarRatingDF$ProfileID == predID], na.rm = T)
   return(predVal)
 }
@@ -86,24 +88,51 @@ predictRatingStandardized <- function(userID, similarRatingDF, predID) {
 c <- subset(standardizedSimilar1, ProfileID == 60)
 predictRatingStandardized(1, standardizedSimilar1, 60)
 
-calcRMSEforTrainingData <- function(userID, predFunc, similarDF) {
-  preds <- c()
+calcRMSEforTrainingData <- function(userID, predFunc, similarDF, predDF) {
   userDF <- subset(ratings, UserID == userID)
-  for (i in userDF$ProfileID) {
-    preds[length(preds) + 1] <- predFunc(userID, similarDF, i)
-  }
+  preds <- by(predDF, predDF$ProfileID, function(x) predFunc(userID, similarDF, x))
   return(mean(abs(userDF$Rating - preds)))
 }
 
-calcRMSEforTrainingData(1, predictRatingStandardized, standardizedSimilar1)
+system.time(
+  b <- calcRMSEforTrainingData(1, predictRatingStandardized, standardizedSimilar1, u1)
+)
 
-calcTrainingRMSEforUser <- function(userID, ratingsDF, NcommonUsers, NtopUsers, predFunc) {
+#######
+#Centered Ratings functions and data creation
+#######
+centerRatings <- function(singleUserDF) {
+  singleUserDF$meanRating <- rep(mean(singleUserDF$Rating), nrow(singleUserDF))
+  singleUserDF$Rating <- singleUserDF$Rating - mean(singleUserDF$Rating)
+  return(singleUserDF)
+}
+# ~82 seconds
+system.time(
+  ratingsCenteredList <- by(ratings, ratings$UserID, function(x) centerRatings(x))
+)
+system.time(
+  ratingsCenteredDF <- rbindlist(ratingsCenteredList)
+)
+predictRatingCentered <- function(userDF, similarRatingDF, predDF) {
+  predID = predDF$ProfileID[1]
+  predVal <- userDF$meanRating[1] + mean(similarRatingDF$Rating[similarRatingDF$ProfileID == predID], na.rm = T)
+  return(predVal)
+}
+#######
+#End of centered stuff
+#######
+
+calcTrainingRMSEforUser <- function(userID, ratingsDF, NcommonUsers, NtopUsers, predFunc, predDF) {
   simUsers <- calcSimilarUsers(userID, ratingsDF, NcommonUsers, NtopUsers)
-  RMSE <- calcRMSEforTrainingData(userID, predFunc, simUsers)
+  RMSE <- calcRMSEforTrainingData(userID, predFunc, simUsers, predDF)
   return(RMSE)
 }
 
 system.time(
-  u3RMSE <- calcTrainingRMSEforUser(3, ratingsStandardizedDF, 10, 100, predictRatingStandardized)
+  simUsers <- calcSimilarUsers(1, ratings, 10, 100)
+)
+
+system.time(
+  u1RMSE <- calcTrainingRMSEforUser(1, ratingsStandardizedDF, 10, 100, predictRatingStandardized, u1)
 )
 
