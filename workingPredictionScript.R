@@ -12,23 +12,27 @@ findNumSimilar <- function(userDF, user2DF) {
 }
 
 getNumCommonRatings <- function(ratingsDF, userDF) {
-  similarUsers <- by(ratingsDF, ratingsDF$UserID, function(x) findNumSimilar(x, userDF))
+  similarUsers <- by(ratingsDF, ratingsDF$UserID, function(x) findNumSimilarCompiled(x, userDF))
   return(similarUsers)
 }
 
 calcSimilarity <- function(userDF, similarUserDF) {
-  userRatings <- subset(userDF, ProfileID %in% intersect(userDF$ProfileID, similarUserDF$ProfileID))
-  similarUserRatings <- subset(similarUserDF, ProfileID %in% intersect(userDF$ProfileID, similarUserDF$ProfileID))
+  #userRatings <- subset(userDF, ProfileID %in% intersect(userDF$ProfileID, similarUserDF$ProfileID))
+  userRatings <- userDF[userDF$ProfileID %in% intersect(userDF$ProfileID, similarUserDF$ProfileID),]
+  #similarUserRatings <- subset(similarUserDF, ProfileID %in% intersect(userDF$ProfileID, similarUserDF$ProfileID))
+  similarUserRatings <- similarUserDF[similarUserDF$ProfileID %in% intersect(userDF$ProfileID, similarUserDF$ProfileID),]
   return(dist(rbind(userRatings$Rating, similarUserRatings$Rating), method = "euclidean"))
 }
 
 calcSimilarUsers <- function(userID, ratingsDF, NcommonRatings, Npercentile) {
   #Create user dataframe for given userID
-  userDF <- subset(ratingsDF, UserID == userID) #Slower command
+  #userDF <- subset(ratingsDF, UserID == userID)
+  userDF <- ratingsDF[ratingsDF$UserID == userID,]
   #Find the number of common ratings between given userID and all other users
   #Returns 0 for given userID so as to not include in final output
-  ratingsSub <- subset(ratingsDF, ProfileID %in% userDF$ProfileID) #Slower command
-  commonRatingUsers <- getNumCommonRatings(ratingsSub, userDF)
+  ratingsSub <- ratingsDF[ratingsDF$ProfileID %in% userDF$ProfileID,]
+  #ratingsSub <- subset(ratingsDF, ProfileID %in% userDF$ProfileID) #Slower command
+  commonRatingUsers <- getNumCommonRatingsCompiled(ratingsSub, userDF)
   #Create dataframe with userID and numSimilar as columns
   numSimilar <- matrix(unlist(commonRatingUsers), ncol = 1, byrow = T)
   userIDs <- names(commonRatingUsers)
@@ -36,9 +40,11 @@ calcSimilarUsers <- function(userID, ratingsDF, NcommonRatings, Npercentile) {
   similarDF$numSimilar <- as.numeric(as.character(similarDF$numSimilar))
   similarDF$userIDs <- as.numeric(as.character(similarDF$userIDs))
   #Get all users with equal to or more similar ratings than provided input
-  similarDF <- subset(similarDF, numSimilar >= NcommonRatings) #Slower command
+  #similarDF <- subset(similarDF, numSimilar >= NcommonRatings)
+  similarDF <- similarDF[similarDF$numSimilar >= NcommonRatings,]
   #Subset entire ratings dataframe to only get relevent ratings for next action - makes the next action faster
-  ratingsSub <- subset(ratingsDF, UserID %in% similarDF$userIDs) #Slower command than above
+  #ratingsSub <- subset(ratingsDF, UserID %in% similarDF$userIDs)
+  ratingsSub <- ratingsDF[ratingsDF$UserID %in% similarDF$userIDs,]
   #Get similarities between all users and provided user
   userSimilarities <- by(ratingsSub, ratingsSub$UserID, function(x) calcSimilarity(userDF, x))
   userSimilaritiesMat <- matrix(unlist(userSimilarities), ncol = 1, byrow = T)
@@ -50,16 +56,26 @@ calcSimilarUsers <- function(userID, ratingsDF, NcommonRatings, Npercentile) {
   userSimilaritiesDF <- join(userSimilaritiesDF, similarDF, by = "UserID")
   userSimilaritiesDF$UserID <- as.numeric(as.character(userSimilaritiesDF$UserID))
   similarUsersRatings <- join(ratingsSub, userSimilaritiesDF, by = "UserID")
-  similarUsersRatings <- subset(similarUsersRatings, similarUsersRatings$UserSimilarity <= quantile(similarUsersRatings$UserSimilarity, c(Npercentile)))
+  similarUsersRatings$UserSimilarity <- similarUsersRatings$UserSimilarity/similarUsersRatings$numSimilar
+  #similarUsersRatings <- subset(similarUsersRatings, similarUsersRatings$UserSimilarity <= quantile(similarUsersRatings$UserSimilarity, c(Npercentile)))
+  similarUsersRatings <- similarUsersRatings[similarUsersRatings$UserSimilarity <= quantile(similarUsersRatings$UserSimilarity, Npercentile),]
   return(as.data.frame(similarUsersRatings))
 }
+
+library(plyr)
+library(compiler)
+findNumSimilarCompiled <- cmpfun(findNumSimilar)
+getNumCommonRatingsCompiled <- cmpfun(getNumCommonRatings)
+calcSimilarityCompiled <- cmpfun(calcSimilarity)
+calcSimilarUsersCompiled <- cmpfun(calcSimilarUsers)
+
+system.time(
+)
 ######
 #Compute standardized rating matrix
 ######
 standardizeRatings <- function(singleUserDF) {
-  singleUserDF$meanRating <- rep(mean(singleUserDF$Rating), nrow(singleUserDF))
   singleUserDF$sdRating <- rep(sd(singleUserDF$Rating), nrow(singleUserDF))
-  singleUserDF$Rating <- (singleUserDF$Rating - mean(singleUserDF$Rating))/sd(singleUserDF$Rating)
   return(singleUserDF)
 }
 # ~41 seconds
@@ -147,10 +163,10 @@ c7 <- 8551:10000
 cores <- list(c1, c2, c3, c4, c5, c6, c7)
 cl = makeCluster(7, "FORK")
 system.time(
-  results <- clusterApplyLB(cl, cores, function(c) 
+  results <- clusterApplyLB(cl, cores, function(c)
     lapply(c, function(x) runPredsForUser(x, ratingsStandardizedDF, 10, .1)))
 )
-save(results, file = "results1_10000_.1nh.rda")
+save(results, file = "results1_10000_.1nhScaled.rda")
 temp <- unlist(results)
 nums <- idmap$KaggleID
 temp[temp > 10] <- 10
