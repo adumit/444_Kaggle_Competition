@@ -12,3 +12,5 @@ Tools used:
 - Many different R packages
 - Java for the speed of implementing the approximate gradient descent, which failed speedwise in R and Python comparatively.
 
+Result:
+- Got 5th place on my own in a pool of 49 teams composed of both graduate and undergraduate students. https://inclass.kaggle.com/c/rice-stat-640-444
